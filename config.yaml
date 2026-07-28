@@ -1,0 +1,44 @@
+batch_size: 256
+cv_folds: 10
+data_dir: data/Breast_Cancer_Matrix
+drop_rate: 0.4
+graph: ppi
+heads: 3
+
+hic: True
+hic_drop_rate: 0
+hic_norm: log
+hic_reduce: svd
+hic_reduce_dim: 5
+hic_type: ice
+
+pathway: True
+pathway_reduce: svd
+pathway_reduce_dim: 5
+
+hidden_channels: 128
+lr: 0.001
+load_data: True
+neighbors: [-1, -1]
+num_epochs: 500
+
+ppi: CPDB
+ppi_attn_drop: 0.1
+ppi_drop_rate: 0
+
+random_seed: 42
+repeat: 1
+resolution: 10KB
+sample_rate: 1.0
+sample_pos: 1.0
+sample_neg: 0.5
+stable: True
+out_dir: outs
+wandb: False
+weight_decay: 0.05
+attnmodel: JCMA
+
+dataset_name: MCF7
+top_k: 500                      # 每次选取的基因数
+max_iterations: 5               # 最大迭代次数
+improvement_threshold: 0.001    # 性能提升阈值（AUPRC+AUROC）

@@ -1,0 +1,7 @@
+__pycache__
+*.zip
+
+data/AML_Matrix/batch_neoloop.sh
+data/CPDB/CPDB_matrix.csv
+outs/*
+readme.md
