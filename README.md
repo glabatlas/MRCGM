@@ -1,0 +1,228 @@
+# MRCGM: Multimodal omics integration with feedback-refinement graph neural network for interpretable cancer gene module discovery
+
+# 1.Introduction
+MRCGM is a graph neural network framework for cancer gene prediction and gene module discovery. It integrates multiple biological data modalities—including omics features, Hi-C chromatin interactions, and pathway information—and iteratively refines the protein-protein interaction (PPI) network using the SubgraphX explainability framework.
+
+The entire workflow consists of:
+
+1. Constructing a multi-modal graph dataset
+2. Training the MRCGM model using 10-fold cross-validation
+3. Predicting candidate cancer genes
+4. Identifying influential neighbors by using SubgraphX
+5. Updating the PPI network
+6. Repeating the process until performance converges
+
+
+---
+
+# 2.Dependencies
+
+Clone Repository
+
+```bash
+git clone https://github.com/glabatlas/MRCGM
+cd MRCGM
+```
+
+Create Environment
+
+
+```bash
+conda create -n MRCGM python=3.8.12
+conda activate MRCGM
+conda install pytorch==1.9.1 -c pytorch
+```
+
+Recommended versions:
+
+| Package           | Version |
+|-------------------|---------|
+| PyTorch Geometric | 2.0.3   |
+| PyTorch scatter   | 2.1.2   |
+| PyTorch sparse    | 0.6.18  |
+| transformers      | 4.46.3  |
+| networkx          | 3.1     |
+| pandas            | 2.0.3   |
+| numpy             | 1.24.1  |
+| scikit-learn      | 1.3.2   |
+
+
+---
+# 3.Usage
+
+## 3.1 Command‑Line Arguments
+
+Run the pipeline with:
+
+```bash
+python main.py --gpu <gpu_id> --dataset <dataset_name> --out <output_dir>
+```
+
+- <gpu_id> – GPU device number (e.g., 0). If not provided, CPU is used.
+- <dataset_name> – one of MCF7 or K562 or AML as defined in the script.
+- <output_dir> – output directory for results, default: ./outs/
+
+
+Example:
+
+```bash
+python main.py --gpu 0 --dataset MCF7 --out output
+```
+
+## 3.2 Configuration File (config.yaml)
+
+In addition to command-line arguments for specifying input/output directories, the majority of hyperparameters and data processing options are configured through the config.yaml file. The key adjustable settings are listed below:
+
+
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `batch_size` | Training batch size | `256` |
+| `cv_folds` | Number of cross-validation folds | `10` |
+| `num_epochs` | Maximum training epochs per fold | `500` |
+| `lr` | Learning rate | `0.001` |
+| `weight_decay` | Weight decay | `0.05` |
+| `drop_rate` | Dropout rate in CGMega | `0.4` |
+| `heads` | Number of attention heads in `TransformerConv` | `3` |
+| `hidden_channels` | Hidden feature dimension | `128` |
+| `neighbors` | Neighbor sampling sizes (`-1` for full graph) | `[-1, -1]` |
+| `sample_neg` / `sample_pos` | Sampling ratios for negative/positive training nodes | `0.5 / 1.0` |
+| `hic` / `pathway` | Enable Hi-C / pathway features | `True` |
+| `hic_reduce_dim` / `pathway_reduce_dim` | SVD reduction dimensions | `5` |
+| `ppi` | PPI source name (directory under `data/`) | `CPDB` |
+| `top_k` | Number of top-ranked genes selected per iteration | `500` |
+| `max_iterations` | Maximum number of PPI refinement iterations | `5` |
+| `improvement_threshold` | Early stopping threshold based on average validation score | `0.001` |
+| `out_dir` | Default output directory (overridden by `--out`) | `outs` |
+
+Modify these parameters in `config.yaml` according to your dataset or experimental settings.
+
+## 3.3 Running the Pipeline
+
+The script performs the following steps:
+
+1. Resume state – Scans existing outputs under <output_dir>/<dataset_name>/ to determine the current iteration and the best validation score achieved so far. This allows interrupted runs to continue seamlessly.
+
+
+2. For each iteration (starting from 0):
+
+- Dataset construction – If not already present, builds the PyG dataset by reading omics, Hi‑C, pathway, and PPI files, applying SVD reduction, and creating 10‑fold stratified train/valid/test masks.
+
+- Training – Trains the model on each fold with early stopping (triggered if validation AUPRC does not improve for a set number of epochs). The best checkpoint per fold is saved with filename {fold}_{auprc}_{auroc}_{tp}.pkl.
+
+- Prediction – After all folds are trained, the ensemble model predicts a score for every gene (average over folds). The top‑K genes (based on top_k in config.yaml) are saved to top_genes.txt.
+
+- SubgraphX explanation – For each top gene, the SubgraphX explainer (MCTS‑based) identifies the most influential neighboring genes (up to 20 per target) using the trained model. Results are saved under subgraphx/.
+
+- PPI update – The original PPI matrix is updated by strengthening edges between each top gene and its discovered neighbors: new_weight = old_weight + exp(old_weight)/(1+exp(old_weight)). The updated matrix is saved as CPDB_matrix_<dataset>_iter<iter>.csv (or similar) in the PPI data directory.
+
+- Next‑iteration dataset – A new dataset is generated by replacing the old PPI with the updated one and saved for the next iteration.
+
+3. Stopping condition – The loop exits when either:
+
+- The current iteration reaches max_iterations, or
+
+- The average validation score (AUPRC + AUROC) does not improve by more than improvement_threshold compared to the best score achieved in previous iterations.
+
+
+
+---
+## 4 Project Pipeline and Structure
+
+## 4.1 Project Pipeline
+
+For every iteration, MRCGM performs:
+1. Build dataset
+2. Train MRCGM
+3. Predict all genes
+4. Rank prediction scores
+5. Select Top-K genes
+6. Run SubgraphX
+7. Identify influential neighbors
+8. Update PPI graph
+9. Generate next dataset
+10. Continue until convergence
+
+
+
+
+```
+Raw Data
+│
+├── Omics
+├── Hi-C
+├── Pathway
+└── PPI
+        │
+        ▼
+Feature Processing
+        │
+        ▼
+Cross Attention fusion(JCMA)
+        │
+        ▼
+Graph Neural Network
+        │
+        ▼
+10-fold Training
+        │
+        ▼
+Gene Prediction
+        │
+        ▼
+Top-K Genes
+        │
+        ▼
+SubgraphX Explanation
+        │
+        ▼
+PPI Refinement
+        │
+        ▼
+Repeat until convergence
+```
+
+## 4.2 Output File Structure
+
+```
+output/MCF7/
+├── iter_0/
+│   ├── dataset.pkl                     # PyG dataset object
+│   ├── 0_0.9843_0.9963_25.pkl          # model checkpoint for fold 0 (AUPRC_AUROC_TP)
+│   ├── 1_0.9461_0.9760_23.pkl          # ... for folds 1..9
+│   ├── metrics.json                    # {"avg_score": } (average validation score)
+│   ├── log.txt                         # detailed training logs per fold
+│   ├── foldwise_test_scores.pkl        # predictions on test set per fold
+│   ├── all_scores.pkl                  # dictionary {gene: avg score over folds}
+│   ├── top_genes.txt                   # list of top‑K gene names
+│   └── subgraphx/
+│       ├── subgraphx_results.pkl       # dict {gene: list_of_neighbor_indices}
+│       └── subgraphx_results.txt       # human‑readable gene names per top gene
+├── iter_1/
+│   ├── dataset.pkl                     # dataset built with updated PPI
+│   ├── ... (same structure as iter_0)
+│   └── ...
+└── ...
+```
+
+Important files:
+
+| File | Description                      |
+|------|----------------------------------|
+| dataset.pkl | Processed PyG dataset            |
+| metrics.json | Validation metrics               |
+| foldwise_test_scores.pkl | Predictions on test set per fold |
+| all_scores.pkl | Prediction score of every gene   |
+| top_genes.txt | Top-K predicted genes            |
+| subgraphx_results.pkl | Gene modules                     |
+| log.txt | Training log                     |
+
+---
+
+
+##  5 Notes
+
+- Data availability – the code assumes that the data files exist in the exact structure described. Missing files will raise FileNotFoundError.
+- Checkpoint naming – model files are saved with the format {fold}-{auprc:.4f}-{auroc:.4f}-{tp}.pkl. The best checkpoint per fold is kept.
+- SubgraphX sampling – the number of rollout and sampling steps are fixed in subgraphx/explainer_core.py; adjust MCTSConfig if needed.
+- Disk space – due to the design of the attention model (JCMA), the saved model checkpoints during training can occupy substantial disk space. Please ensure sufficient storage capacity before running the pipeline.
