@@ -1,6 +1,6 @@
 __pycache__
 *.zip
-
+.idea/
 data/AML_Matrix/batch_neoloop.sh
 data/CPDB/CPDB_matrix.csv
 outs/*
